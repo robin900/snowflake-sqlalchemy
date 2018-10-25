@@ -5,11 +5,13 @@
 #
 import os
 import re
+from datetime import datetime
 
 import pytest
 from parameters import (CONNECTION_PARAMETERS)
 from sqlalchemy import (Table, Column, Integer, Numeric, String, MetaData,
                         Sequence, ForeignKey, Binary, REAL)
+from sqlalchemy.dialects.snowflake import inspect
 from sqlalchemy import inspect
 from sqlalchemy import text
 from sqlalchemy.sql import and_, or_, not_
@@ -60,6 +62,17 @@ def _create_users_addresses_tables_without_sequence(engine_testaccount,
     metadata.create_all(engine_testaccount)
     return users, addresses
 
+
+def _create_timestamps_table(engine_testaccount, metadata):
+    timestamps = Table('timestamps', metadata,
+                  Column('ts', TIMESTAMP),
+                  Column('ts_tz', TIMESTAMP_TZ),
+                  Column('ts_ltz', TIMESTAMP_LTZ),
+                  Column('ts_ntz', TIMESTAMP_NTZ)
+                  )
+
+    metadata.create_all(engine_testaccount)
+    return timestamps
 
 def test_connect_args():
     """
@@ -154,6 +167,29 @@ def test_create_drop_tables(engine_testaccount):
         addresses.drop(engine_testaccount)
         users.drop(engine_testaccount)
 
+
+def test_timestamp_types(engine_testaccount):
+    """
+    Inserts data of all timestamp types, reads back
+    """
+    metadata = MetaData()
+    timestamps = _create_timestamps_table(engine_testaccount, metadata)
+    dt = datetime.utcnow()
+    dt_tz = dt.replace(tzinfo=pytz.timezone('UTC'))
+
+    try:
+        # inserts data with an implicitly generated id
+        ins = timestamps.insert().values(ts=dt, ts_tz=dt_tz, ts_ltz=dt_tz, ts_ntz=dt)
+        results = engine_testaccount.execute(ins)
+        results.close()
+
+        # verify the results
+        s = select([timestamps])
+        results = conn.execute(s)
+        rows = [row for row in results]
+        results.close()
+        assert len(rows) == 1
+        # TODO assert things about the four datetimes
 
 def test_insert_tables(engine_testaccount):
     """
